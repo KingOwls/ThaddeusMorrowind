@@ -5,7 +5,7 @@ using Discord.WebSocket;
 
 namespace ThaddeusMorrowind.Bot;
 
-public class Worker : BackgroundService
+public sealed class Worker : BackgroundService
 {
     private readonly DiscordSocketClient _client;
     private readonly InteractionService _interactions;
@@ -13,7 +13,7 @@ public class Worker : BackgroundService
     private readonly IServiceProvider _services;
     private readonly ILogger<Worker> _logger;
 
-    private ulong? _guildId;
+    private bool _commandsRegistered;
 
     public Worker(
         DiscordSocketClient client,
@@ -38,20 +38,23 @@ public class Worker : BackgroundService
         _client.InteractionCreated += OnInteractionCreatedAsync;
 
         string? token = _configuration["Discord:Token"];
-        string? guildIdText = _configuration["Discord:GuildId"];
 
         if (string.IsNullOrWhiteSpace(token))
         {
             throw new InvalidOperationException(
-                "No se encontró el token del bot. Configura Discord:Token usando dotnet user-secrets.");
+                "No se encontró Discord:Token. Configúralo usando dotnet user-secrets.");
         }
 
-        if (ulong.TryParse(guildIdText, out ulong parsedGuildId))
+        await _interactions.AddModulesAsync(Assembly.GetExecutingAssembly(), _services);
+
+        _logger.LogInformation(
+            "Módulos slash cargados: {Count}",
+            _interactions.SlashCommands.Count);
+
+        foreach (SlashCommandInfo command in _interactions.SlashCommands)
         {
-            _guildId = parsedGuildId;
+            _logger.LogInformation("Comando cargado: /{CommandName}", command.Name);
         }
-
-        await _interactions.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
 
         await _client.LoginAsync(TokenType.Bot, token);
         await _client.StartAsync();
@@ -60,29 +63,45 @@ public class Worker : BackgroundService
 
         try
         {
-            await Task.Delay(Timeout.Infinite, stoppingToken);
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
         }
         catch (TaskCanceledException)
         {
-            // Esto pasa cuando detenemos el bot con Ctrl + C.
+            // Apagado normal con Ctrl + C.
         }
     }
 
     private async Task OnClientReadyAsync()
     {
-        if (_guildId.HasValue)
+        if (_commandsRegistered)
         {
-            await _interactions.RegisterCommandsToGuildAsync(_guildId.Value);
-            _logger.LogInformation("Comandos registrados en el servidor de pruebas: {GuildId}", _guildId.Value);
+            return;
+        }
+
+        _commandsRegistered = true;
+
+        string? guildIdText = _configuration["Discord:GuildId"];
+
+        if (ulong.TryParse(guildIdText, out ulong guildId))
+        {
+            await _interactions.RegisterCommandsToGuildAsync(guildId, deleteMissing: true);
+
+            _logger.LogInformation(
+                "Comandos registrados en el servidor de pruebas: {GuildId}",
+                guildId);
         }
         else
         {
             await _interactions.RegisterCommandsGloballyAsync();
+
             _logger.LogInformation("Comandos registrados globalmente.");
         }
 
         await _client.SetGameAsync("Mini MMORPG en construcción ⚔️");
-        _logger.LogInformation("Thaddeus Morrowind está conectado como {BotName}", _client.CurrentUser.Username);
+
+        _logger.LogInformation(
+            "Thaddeus Morrowind está conectado como {BotName}",
+            _client.CurrentUser.Username);
     }
 
     private async Task OnInteractionCreatedAsync(SocketInteraction interaction)
@@ -99,11 +118,31 @@ public class Worker : BackgroundService
                     "Error ejecutando comando: {Error} - {Reason}",
                     result.Error,
                     result.ErrorReason);
+
+                if (interaction.HasResponded)
+                {
+                    await interaction.FollowupAsync(
+                        "No pude ejecutar ese comando. Revisa la consola del bot.",
+                        ephemeral: true);
+                }
+                else
+                {
+                    await interaction.RespondAsync(
+                        "No pude ejecutar ese comando. Revisa la consola del bot.",
+                        ephemeral: true);
+                }
             }
         }
         catch (Exception exception)
         {
             _logger.LogError(exception, "Ocurrió un error procesando una interacción de Discord.");
+
+            if (!interaction.HasResponded)
+            {
+                await interaction.RespondAsync(
+                    "Ocurrió un error interno procesando el comando.",
+                    ephemeral: true);
+            }
         }
     }
 
@@ -130,6 +169,7 @@ public class Worker : BackgroundService
         _logger.LogInformation("Apagando Thaddeus Morrowind...");
 
         await _client.StopAsync();
+        await _client.LogoutAsync();
 
         await base.StopAsync(cancellationToken);
     }
