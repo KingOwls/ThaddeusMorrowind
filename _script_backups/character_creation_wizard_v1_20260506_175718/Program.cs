@@ -57,7 +57,6 @@ builder.Services.AddScoped<IUserActivityService>(sp => sp.GetRequiredService<Use
 builder.Services.AddScoped<IActiveCharacterService>(sp => sp.GetRequiredService<UserService>());
 builder.Services.AddScoped<ICharacterService, CharacterService>();
 builder.Services.AddScoped<ICharacterCatalogService, CharacterCatalogService>();
-builder.Services.AddSingleton<ICharacterCreationSessionStore, InMemoryCharacterCreationSessionStore>();
 builder.Services.AddHostedService<Worker>();
 
 IHost host = builder.Build();

@@ -1,76 +1,43 @@
+using ThaddeusMorrowind.Bot.Features.Characters.Dtos;
+
 namespace ThaddeusMorrowind.Bot.Features.Characters;
 
 public interface ICharacterService
 {
-    Task<IReadOnlyList<CharacterCatalogOptionDto>> GetNationOptionsAsync(
+    Task<CharacterCommandResult<CharacterProfileDto>> CreateAsync(
+        ulong actorDiscordUserId,
+        CharacterCreateRequestDto request,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<CharacterCatalogOptionDto>> GetProfessionOptionsAsync(
+    Task<CharacterCommandResult<IReadOnlyList<CharacterListItemDto>>> ListAsync(
+        ulong actorDiscordUserId,
+        bool includeArchived = false,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<CharacterCatalogOptionDto>> GetRoleOptionsAsync(
+    Task<CharacterCommandResult<CharacterProfileDto>> GetAsync(
+        ulong actorDiscordUserId,
+        CharacterLookupDto lookup,
+        bool includeArchived = false,
         CancellationToken cancellationToken = default);
 
-    Task<CharacterCatalogOptionDto?> GetNationOptionAsync(
-        ulong id,
+    Task<CharacterCommandResult<CharacterProfileDto>> SelectAsync(
+        ulong actorDiscordUserId,
+        CharacterLookupDto lookup,
         CancellationToken cancellationToken = default);
 
-    Task<CharacterCatalogOptionDto?> GetProfessionOptionAsync(
-        ulong id,
+    Task<CharacterCommandResult<CharacterProfileDto>> EditAsync(
+        ulong actorDiscordUserId,
+        CharacterEditRequestDto request,
         CancellationToken cancellationToken = default);
 
-    Task<CharacterCatalogOptionDto?> GetRoleOptionAsync(
-        ulong id,
+    Task<CharacterCommandResult<CharacterProfileDto>> ArchiveAsync(
+        ulong actorDiscordUserId,
+        CharacterLookupDto lookup,
         CancellationToken cancellationToken = default);
 
-    Task<CharacterCreateResult> CreateCharacterFromCatalogAsync(
-        ulong discordUserId,
-        string username,
-        string? displayName,
-        string characterName,
-        string? nickname,
-        ulong nationId,
-        ulong professionId,
-        ulong roleId,
-        string? portraitUrl = null,
-        CancellationToken cancellationToken = default);
-
-    Task<CharacterCreateResult> CreateCharacterAsync(
-        ulong discordUserId,
-        string username,
-        string? displayName,
-        string characterName,
-        string nationInput,
-        string professionInput,
-        string roleInput,
-        CancellationToken cancellationToken = default);
-
-    Task<CharacterCreateResult> UpdateCharacterAsync(
-        ulong discordUserId,
-        ulong characterId,
-        string? newName,
-        string? newNickname,
-        string? newPortraitUrl,
-        bool clearPortrait = false,
-        CancellationToken cancellationToken = default);
-
-    Task<CharacterDeleteResult> AdminDeleteCharacterAsync(
-        ulong characterId,
-        ulong adminDiscordUserId,
-        string? reason,
-        CancellationToken cancellationToken = default);
-
-    Task<IReadOnlyList<CharacterSummaryDto>> ListCharactersAsync(
-        ulong discordUserId,
-        CancellationToken cancellationToken = default);
-
-    Task<CharacterDetailDto?> GetCharacterAsync(
-        ulong discordUserId,
-        ulong? characterId,
-        CancellationToken cancellationToken = default);
-
-    Task<CharacterDetailDto?> SelectCharacterAsync(
-        ulong discordUserId,
-        ulong characterId,
+    Task<CharacterCommandResult<CharacterProfileDto>> RestoreAsync(
+        ulong actorDiscordUserId,
+        CharacterLookupDto lookup,
+        bool allowAnyOwner = false,
         CancellationToken cancellationToken = default);
 }

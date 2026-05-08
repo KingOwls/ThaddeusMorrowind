@@ -13,16 +13,13 @@ public sealed class CharacterPrefixCommands : ModuleBase<SocketCommandContext>
 {
     private readonly ICharacterService _characterService;
     private readonly ICharacterCatalogService _catalogService;
-    private readonly ICharacterCreationSessionStore _sessionStore;
 
     public CharacterPrefixCommands(
         ICharacterService characterService,
-        ICharacterCatalogService catalogService,
-        ICharacterCreationSessionStore sessionStore)
+        ICharacterCatalogService catalogService)
     {
         _characterService = characterService;
         _catalogService = catalogService;
-        _sessionStore = sessionStore;
     }
 
 
@@ -72,34 +69,17 @@ public sealed class CharacterPrefixCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("crear")]
-    public async Task CreateAsync(string nombre, string? apodo = null)
+    public async Task CreateAsync(string nombre, string nacion, string rol, string profesion, string? apodo = null)
     {
-        IReadOnlyList<CharacterCatalogOptionDto> nations = await _catalogService.GetNationsAsync();
-        IReadOnlyList<CharacterCatalogOptionDto> roles = await _catalogService.GetRolesAsync();
-        IReadOnlyList<CharacterCatalogOptionDto> professions = await _catalogService.GetProfessionsAsync();
-
-        if (nations.Count == 0 || roles.Count == 0 || professions.Count == 0)
-        {
-            await ReplyAsync(embed: CharacterCreationWizardViews.CatalogMissing());
-            return;
-        }
-
-        CharacterCreationSessionDto session = _sessionStore.Create(
+        CharacterCommandResult<CharacterProfileDto> result = await _characterService.CreateAsync(
             Context.User.Id,
-            nombre,
-            apodo,
-            null);
+            new CharacterCreateRequestDto(nombre, apodo, null, nacion, rol, profesion));
 
         await ReplyAsync(
-            embed: CharacterCreationWizardViews.Wizard(
-                session,
-                nations[0],
-                roles[0],
-                professions[0],
-                nations.Count,
-                roles.Count,
-                professions.Count),
-            components: CharacterCreationWizardComponents.WizardButtons(session));
+            embed: result.Success && result.Data is not null
+                ? CharacterProfileViews.Created(result.Data)
+                : CharacterProfileViews.Result("⚠️ No se pudo crear", result.Message, false),
+            components: result.Success && result.Data is not null ? CharacterProfileComponents.ForOwner(result.Data) : null);
     }
 
     [Command("lista")]

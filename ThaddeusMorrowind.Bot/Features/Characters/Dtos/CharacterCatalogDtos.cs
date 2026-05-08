@@ -1,6 +1,7 @@
-namespace ThaddeusMorrowind.Bot.Features.Characters;
+namespace ThaddeusMorrowind.Bot.Features.Characters.Dtos;
 
 public sealed record CharacterCatalogOptionDto(
+    string CatalogType,
     ulong Id,
     string Key,
     string Name,
