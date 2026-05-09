@@ -46,6 +46,21 @@ public sealed class CharacterService : ICharacterService
             return Fail<CharacterProfileDto>("Tu cuenta no está activa.");
         }
 
+        if (await CharacterNameExistsAsync(connection, user.UserAccountId, name, null, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes un personaje activo llamado **{name}**. Usa otro nombre para no confundir la ficha.");
+        }
+
+        string? normalizedNicknameForCreate = NormalizeNullable(request.Nickname);
+
+        if (normalizedNicknameForCreate is not null &&
+            await CharacterNicknameExistsAsync(connection, user.UserAccountId, normalizedNicknameForCreate, null, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes un personaje activo con el apodo **{normalizedNicknameForCreate}**. Usa otro apodo o déjalo vacío.");
+        }
+
         uint activeCount = await CountCharactersAsync(connection, user.UserAccountId, "active", cancellationToken);
 
         if (activeCount >= user.MaxRosterSlots)
@@ -308,6 +323,20 @@ public sealed class CharacterService : ICharacterService
             return Fail<CharacterProfileDto>("No enviaste ningún dato para actualizar.");
         }
 
+        if (newName is not null &&
+            await CharacterNameExistsAsync(connection, profile.UserAccountId, newName, profile.CharacterId, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes otro personaje activo llamado **{newName}**. Usa un nombre distinto.");
+        }
+
+        if (newNickname is not null &&
+            await CharacterNicknameExistsAsync(connection, profile.UserAccountId, newNickname, profile.CharacterId, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes otro personaje activo con el apodo **{newNickname}**. Usa un apodo distinto o déjalo vacío.");
+        }
+
         await using DbCommand command = connection.CreateCommand();
         command.CommandText = """
             UPDATE characters
@@ -546,102 +575,163 @@ public sealed class CharacterService : ICharacterService
         CancellationToken cancellationToken,
         params (string Name, object? Value)[] parameters)
     {
-        await using DbCommand command = connection.CreateCommand();
-        command.CommandText = $"""
-            SELECT
-                characters.id AS character_id,
-                characters.user_account_id,
-                user_accounts.discord_user_id AS owner_discord_user_id,
-                user_accounts.username AS owner_username,
-                characters.name,
-                characters.nickname,
-                characters.image_url,
-                characters.level,
-                characters.current_xp,
-                characters.total_xp,
-                characters.character_status,
-                characters.created_at,
-                nations.nation_key,
-                nations.name AS nation_name,
-                nations.icon_url AS nation_icon_url,
-                nations.banner_url AS nation_banner_url,
-                roles.role_key,
-                roles.name AS role_name,
-                roles.icon_url AS role_icon_url,
-                roles.banner_url AS role_banner_url,
-                professions.profession_key,
-                professions.name AS profession_name,
-                professions.icon_url AS profession_icon_url,
-                professions.banner_url AS profession_banner_url,
-                CASE WHEN user_active_characters.character_id IS NULL THEN 0 ELSE 1 END AS is_active_character
-            FROM characters
-            INNER JOIN user_accounts
-                ON user_accounts.id = characters.user_account_id
-            INNER JOIN nations
-                ON nations.id = characters.nation_id
-            INNER JOIN roles
-                ON roles.id = characters.role_id
-            INNER JOIN professions
-                ON professions.id = characters.profession_id
-            LEFT JOIN user_active_characters
-                ON user_active_characters.user_account_id = characters.user_account_id
-               AND user_active_characters.character_id = characters.id
-            WHERE {whereClause}
-              {(includeArchived ? "" : "AND characters.character_status = 'active'")}
-            ORDER BY characters.created_at DESC
-            LIMIT 1;
-            """;
+        ulong characterId;
+        ulong userAccountId;
+        ulong ownerDiscordUserId;
+        string ownerUsername;
+        string name;
+        string? nickname;
+        string? imageUrl;
+        uint level;
+        ulong currentXp;
+        ulong totalXp;
+        string characterStatus;
+        DateTime createdAt;
+        string nationKey;
+        string nationName;
+        string? nationIconUrl;
+        string? nationBannerUrl;
+        string roleKey;
+        string roleName;
+        string? roleIconUrl;
+        string? roleBannerUrl;
+        string professionKey;
+        string professionName;
+        string? professionIconUrl;
+        string? professionBannerUrl;
+        bool isActiveCharacter;
 
-        foreach ((string name, object? value) in parameters)
+        await using (DbCommand command = connection.CreateCommand())
         {
-            AddParameter(command, name, value);
+            command.CommandText = $"""
+                SELECT
+                    characters.id AS character_id,
+                    characters.user_account_id,
+                    user_accounts.discord_user_id AS owner_discord_user_id,
+                    user_accounts.username AS owner_username,
+                    characters.name,
+                    characters.nickname,
+                    characters.image_url,
+                    characters.level,
+                    characters.current_xp,
+                    characters.total_xp,
+                    characters.character_status,
+                    characters.created_at,
+                    nations.nation_key,
+                    nations.name AS nation_name,
+                    nations.icon_url AS nation_icon_url,
+                    nations.banner_url AS nation_banner_url,
+                    roles.role_key,
+                    roles.name AS role_name,
+                    roles.icon_url AS role_icon_url,
+                    roles.banner_url AS role_banner_url,
+                    professions.profession_key,
+                    professions.name AS profession_name,
+                    professions.icon_url AS profession_icon_url,
+                    professions.banner_url AS profession_banner_url,
+                    CASE WHEN user_active_characters.character_id IS NULL THEN 0 ELSE 1 END AS is_active_character
+                FROM characters
+                INNER JOIN user_accounts
+                    ON user_accounts.id = characters.user_account_id
+                INNER JOIN nations
+                    ON nations.id = characters.nation_id
+                INNER JOIN roles
+                    ON roles.id = characters.role_id
+                INNER JOIN professions
+                    ON professions.id = characters.profession_id
+                LEFT JOIN user_active_characters
+                    ON user_active_characters.user_account_id = characters.user_account_id
+                   AND user_active_characters.character_id = characters.id
+                WHERE {whereClause}
+                  {(includeArchived ? "" : "AND characters.character_status = 'active'")}
+                ORDER BY characters.created_at DESC
+                LIMIT 1;
+                """;
+
+            foreach ((string parameterName, object? value) in parameters)
+            {
+                AddParameter(command, parameterName, value);
+            }
+
+            await using DbDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
+
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            characterId = Convert.ToUInt64(reader["character_id"]);
+            userAccountId = Convert.ToUInt64(reader["user_account_id"]);
+            ownerDiscordUserId = Convert.ToUInt64(reader["owner_discord_user_id"]);
+            ownerUsername = Convert.ToString(reader["owner_username"]) ?? string.Empty;
+            name = Convert.ToString(reader["name"]) ?? string.Empty;
+            nickname = reader["nickname"] is DBNull ? null : Convert.ToString(reader["nickname"]);
+            imageUrl = reader["image_url"] is DBNull ? null : Convert.ToString(reader["image_url"]);
+            level = Convert.ToUInt32(reader["level"]);
+            currentXp = Convert.ToUInt64(reader["current_xp"]);
+            totalXp = Convert.ToUInt64(reader["total_xp"]);
+            characterStatus = Convert.ToString(reader["character_status"]) ?? "active";
+            createdAt = Convert.ToDateTime(reader["created_at"]);
+            nationKey = Convert.ToString(reader["nation_key"]) ?? string.Empty;
+            nationName = Convert.ToString(reader["nation_name"]) ?? string.Empty;
+            nationIconUrl = reader["nation_icon_url"] is DBNull ? null : Convert.ToString(reader["nation_icon_url"]);
+            nationBannerUrl = reader["nation_banner_url"] is DBNull ? null : Convert.ToString(reader["nation_banner_url"]);
+            roleKey = Convert.ToString(reader["role_key"]) ?? string.Empty;
+            roleName = Convert.ToString(reader["role_name"]) ?? string.Empty;
+            roleIconUrl = reader["role_icon_url"] is DBNull ? null : Convert.ToString(reader["role_icon_url"]);
+            roleBannerUrl = reader["role_banner_url"] is DBNull ? null : Convert.ToString(reader["role_banner_url"]);
+            professionKey = Convert.ToString(reader["profession_key"]) ?? string.Empty;
+            professionName = Convert.ToString(reader["profession_name"]) ?? string.Empty;
+            professionIconUrl = reader["profession_icon_url"] is DBNull ? null : Convert.ToString(reader["profession_icon_url"]);
+            professionBannerUrl = reader["profession_banner_url"] is DBNull ? null : Convert.ToString(reader["profession_banner_url"]);
+            isActiveCharacter = Convert.ToInt32(reader["is_active_character"]) == 1;
         }
-
-        await using DbDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
-
-        if (!await reader.ReadAsync(cancellationToken))
-        {
-            return null;
-        }
-
-        ulong characterId = Convert.ToUInt64(reader["character_id"]);
 
         CharacterEquipmentSummaryDto equipment = new(
             "Sin arma equipada",
             "Artefactos: 0/5 · ArtUnic: sin equipar",
             "Sin ArtUnic equipado");
 
-        CharacterProfileDto profile = new(
+        CharacterSkillTreeSummaryDto skillTree = await LoadSkillTreeAsync(
+            connection,
             characterId,
-            Convert.ToUInt64(reader["user_account_id"]),
-            Convert.ToUInt64(reader["owner_discord_user_id"]),
-            Convert.ToString(reader["owner_username"]) ?? string.Empty,
-            Convert.ToString(reader["name"]) ?? string.Empty,
-            reader["nickname"] is DBNull ? null : Convert.ToString(reader["nickname"]),
-            reader["image_url"] is DBNull ? null : Convert.ToString(reader["image_url"]),
-            Convert.ToUInt32(reader["level"]),
-            Convert.ToUInt64(reader["current_xp"]),
-            Convert.ToUInt64(reader["total_xp"]),
-            Convert.ToString(reader["nation_key"]) ?? string.Empty,
-            Convert.ToString(reader["nation_name"]) ?? string.Empty,
-            reader["nation_icon_url"] is DBNull ? null : Convert.ToString(reader["nation_icon_url"]),
-            reader["nation_banner_url"] is DBNull ? null : Convert.ToString(reader["nation_banner_url"]),
-            Convert.ToString(reader["role_key"]) ?? string.Empty,
-            Convert.ToString(reader["role_name"]) ?? string.Empty,
-            reader["role_icon_url"] is DBNull ? null : Convert.ToString(reader["role_icon_url"]),
-            reader["role_banner_url"] is DBNull ? null : Convert.ToString(reader["role_banner_url"]),
-            Convert.ToString(reader["profession_key"]) ?? string.Empty,
-            Convert.ToString(reader["profession_name"]) ?? string.Empty,
-            reader["profession_icon_url"] is DBNull ? null : Convert.ToString(reader["profession_icon_url"]),
-            reader["profession_banner_url"] is DBNull ? null : Convert.ToString(reader["profession_banner_url"]),
-            Convert.ToInt32(reader["is_active_character"]) == 1,
-            Convert.ToString(reader["character_status"]) ?? "active",
-            Convert.ToDateTime(reader["created_at"]),
-            equipment,
-            await LoadSkillTreeAsync(connection, characterId, Convert.ToUInt32(reader["level"]), cancellationToken),
-            await LoadStatsAsync(connection, characterId, cancellationToken));
+            level,
+            cancellationToken);
 
-        return profile;
+        IReadOnlyList<CharacterStatValueDto> stats = await LoadStatsAsync(
+            connection,
+            characterId,
+            cancellationToken);
+
+        return new CharacterProfileDto(
+            characterId,
+            userAccountId,
+            ownerDiscordUserId,
+            ownerUsername,
+            name,
+            nickname,
+            imageUrl,
+            level,
+            currentXp,
+            totalXp,
+            nationKey,
+            nationName,
+            nationIconUrl,
+            nationBannerUrl,
+            roleKey,
+            roleName,
+            roleIconUrl,
+            roleBannerUrl,
+            professionKey,
+            professionName,
+            professionIconUrl,
+            professionBannerUrl,
+            isActiveCharacter,
+            characterStatus,
+            createdAt,
+            equipment,
+            skillTree,
+            stats);
     }
 
     private async Task<IReadOnlyList<CharacterStatValueDto>> LoadStatsAsync(

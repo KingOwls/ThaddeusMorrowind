@@ -13,17 +13,20 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
 {
     private readonly ICharacterService _characterService;
     private readonly ICharacterCatalogService _catalogService;
+    private readonly ICharacterCreationSessionStore _sessionStore;
 
     public CharacterSlashCommands(
         ICharacterService characterService,
-        ICharacterCatalogService catalogService)
+        ICharacterCatalogService catalogService,
+        ICharacterCreationSessionStore sessionStore)
     {
         _characterService = characterService;
         _catalogService = catalogService;
+        _sessionStore = sessionStore;
     }
 
 
-    [SlashCommand("naciones", "Muestra las naciones disponibles para crear personajes.")]
+    [SlashCommand("naciones", "Muestra el catálogo visual navegable.")]
     public async Task NationsAsync(bool publico = false)
     {
         await DeferAsync(ephemeral: !publico);
@@ -32,9 +35,20 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
 
         if (options.Count == 0)
         {
-            await FollowupAsync(embed: CharacterCatalogViews.Missing("nation"), ephemeral: !publico);
+            await FollowupAsync(embed: CharacterCatalogBrowserViews.Empty("nation"), ephemeral: !publico);
             return;
         }
+
+        await FollowupAsync(
+            embed: CharacterCatalogBrowserViews.Detail(
+                "🏳️ Naciones",
+                "Las naciones definen identidad, afinidad narrativa y crecimiento base.",
+                options[0],
+                0,
+                options.Count),
+            components: CharacterCatalogBrowserComponents.BrowserButtons("nation", 0, options.Count),
+            ephemeral: !publico);
+    }
 
         await FollowupAsync(
             embed: CharacterCatalogViews.List(
@@ -45,7 +59,7 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
             ephemeral: !publico);
     }
 
-    [SlashCommand("roles", "Muestra los roles disponibles para crear personajes.")]
+    [SlashCommand("roles", "Muestra el catálogo visual navegable.")]
     public async Task RolesAsync(bool publico = false)
     {
         await DeferAsync(ephemeral: !publico);
@@ -54,9 +68,20 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
 
         if (options.Count == 0)
         {
-            await FollowupAsync(embed: CharacterCatalogViews.Missing("role"), ephemeral: !publico);
+            await FollowupAsync(embed: CharacterCatalogBrowserViews.Empty("role"), ephemeral: !publico);
             return;
         }
+
+        await FollowupAsync(
+            embed: CharacterCatalogBrowserViews.Detail(
+                "⚔️ Roles",
+                "Los roles definen función de combate y estilo principal.",
+                options[0],
+                0,
+                options.Count),
+            components: CharacterCatalogBrowserComponents.BrowserButtons("role", 0, options.Count),
+            ephemeral: !publico);
+    }
 
         await FollowupAsync(
             embed: CharacterCatalogViews.List(
@@ -67,7 +92,7 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
             ephemeral: !publico);
     }
 
-    [SlashCommand("profesiones", "Muestra las profesiones disponibles para crear personajes.")]
+    [SlashCommand("profesiones", "Muestra el catálogo visual navegable.")]
     public async Task ProfessionsAsync(bool publico = false)
     {
         await DeferAsync(ephemeral: !publico);
@@ -76,9 +101,20 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
 
         if (options.Count == 0)
         {
-            await FollowupAsync(embed: CharacterCatalogViews.Missing("profession"), ephemeral: !publico);
+            await FollowupAsync(embed: CharacterCatalogBrowserViews.Empty("profession"), ephemeral: !publico);
             return;
         }
+
+        await FollowupAsync(
+            embed: CharacterCatalogBrowserViews.Detail(
+                "🧰 Profesiones",
+                "Las profesiones definen utilidad, exploración y recursos.",
+                options[0],
+                0,
+                options.Count),
+            components: CharacterCatalogBrowserComponents.BrowserButtons("profession", 0, options.Count),
+            ephemeral: !publico);
+    }
 
         await FollowupAsync(
             embed: CharacterCatalogViews.List(
@@ -89,30 +125,60 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
             ephemeral: !publico);
     }
 
-    [SlashCommand("crear", "Crea un personaje nuevo.")]
+    [SlashCommand("crear", "Inicia la creación visual de un personaje.")]
     public async Task CreateAsync(
         string nombre,
-        string nacion,
-        string rol,
-        string profesion,
         string? apodo = null,
+        IAttachment? imagen = null,
         string? imagen_url = null)
     {
         await DeferAsync(ephemeral: true);
 
-        CharacterCommandResult<CharacterProfileDto> result = await _characterService.CreateAsync(
-            Context.User.Id,
-            new CharacterCreateRequestDto(nombre, apodo, imagen_url, nacion, rol, profesion));
-
-        if (!result.Success || result.Data is null)
+        if (string.IsNullOrWhiteSpace(nombre))
         {
-            await FollowupAsync(embed: CharacterProfileViews.Result("⚠️ No se pudo crear el personaje", result.Message, false), ephemeral: true);
+            await FollowupAsync(
+                embed: CharacterProfileViews.Result(
+                    "⚠️ Nombre inválido",
+                    "El nombre del personaje no puede estar vacío.",
+                    false),
+                ephemeral: true);
+
             return;
         }
 
+        IReadOnlyList<CharacterCatalogOptionDto> nations = await _catalogService.GetNationsAsync();
+        IReadOnlyList<CharacterCatalogOptionDto> roles = await _catalogService.GetRolesAsync();
+        IReadOnlyList<CharacterCatalogOptionDto> professions = await _catalogService.GetProfessionsAsync();
+
+        if (nations.Count == 0 || roles.Count == 0 || professions.Count == 0)
+        {
+            await FollowupAsync(embed: CharacterCreationWizardViews.CatalogMissing(), ephemeral: true);
+            return;
+        }
+
+        string? finalImageUrl = imagen?.Url;
+
+        if (string.IsNullOrWhiteSpace(finalImageUrl))
+        {
+            finalImageUrl = imagen_url;
+        }
+
+        CharacterCreationSessionDto session = _sessionStore.Create(
+            Context.User.Id,
+            nombre,
+            apodo,
+            finalImageUrl);
+
         await FollowupAsync(
-            embed: CharacterProfileViews.Created(result.Data),
-            components: CharacterProfileComponents.ForOwner(result.Data),
+            embed: CharacterCreationWizardViews.Wizard(
+                session,
+                nations[0],
+                roles[0],
+                professions[0],
+                nations.Count,
+                roles.Count,
+                professions.Count),
+            components: CharacterCreationWizardComponents.WizardButtons(session),
             ephemeral: true);
     }
 

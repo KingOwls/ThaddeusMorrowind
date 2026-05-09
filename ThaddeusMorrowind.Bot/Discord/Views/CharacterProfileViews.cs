@@ -91,16 +91,51 @@ public static class CharacterProfileViews
             builder.WithThumbnailUrl(character.ImageUrl);
         }
 
-        StringBuilder text = new();
+        string mainStats = BuildStatsByKeys(
+            character.Stats,
+            new[]
+            {
+                "vida",
+                "ataque",
+                "poder_magico",
+                "armadura",
+                "resistencia_magica",
+                "velocidad",
+                "probabilidad",
+                "danio_critico",
+                "mana"
+            });
 
-        foreach (CharacterStatValueDto stat in character.Stats)
-        {
-            text.AppendLine(
-                $"**{stat.Name}:** {FormatValue(stat.TotalValue, stat.ValueKind)} " +
-                $"`base {FormatValue(stat.BaseValue, stat.ValueKind)} + extra {FormatValue(stat.ExtraValue, stat.ValueKind)}`");
-        }
+        string secondaryStats = BuildStatsByKeys(
+            character.Stats,
+            new[]
+            {
+                "evasion",
+                "suerte",
+                "inmortalidad",
+                "bloqueo",
+                "aumento_danio_infligido",
+                "reduccion_danio_recibido",
+                "bono_protectivo",
+                "agradecimiento",
+                "omnivampirismo"
+            });
 
-        builder.WithDescription(text.Length == 0 ? "No hay estadísticas registradas." : text.ToString());
+        builder.AddField(
+            "Estadísticas principales",
+            string.IsNullOrWhiteSpace(mainStats) ? "Sin estadísticas principales cargadas." : mainStats,
+            inline: false);
+
+        builder.AddField(
+            "Estadísticas secundarias",
+            string.IsNullOrWhiteSpace(secondaryStats) ? "Sin estadísticas secundarias cargadas." : secondaryStats,
+            inline: false);
+
+        builder.AddField(
+            "Nota de crítico",
+            "La probabilidad crítica inicia en **5%** y el daño crítico inicia en **50%**. El daño crítico se muestra como bono, no como 150%.",
+            inline: false);
+
         return builder.Build();
     }
 
@@ -191,21 +226,29 @@ public static class CharacterProfileViews
 
     private static string BuildMainStats(IReadOnlyList<CharacterStatValueDto> stats)
     {
-        string[] desired =
-        {
-            "vida",
-            "ataque",
-            "poder_magico",
-            "armadura",
-            "resistencia_magica",
-            "probabilidad_critica",
-            "danio_critico",
-            "mana_maximo"
-        };
+        return BuildStatsByKeys(
+            stats,
+            new[]
+            {
+                "vida",
+                "ataque",
+                "poder_magico",
+                "armadura",
+                "resistencia_magica",
+                "velocidad",
+                "probabilidad",
+                "danio_critico",
+                "mana"
+            });
+    }
 
+    private static string BuildStatsByKeys(
+        IReadOnlyList<CharacterStatValueDto> stats,
+        IReadOnlyList<string> keys)
+    {
         StringBuilder text = new();
 
-        foreach (string key in desired)
+        foreach (string key in keys)
         {
             CharacterStatValueDto? stat = stats.FirstOrDefault(s => s.StatKey == key);
 
@@ -214,10 +257,12 @@ public static class CharacterProfileViews
                 continue;
             }
 
-            text.AppendLine($"**{stat.Name}:** {FormatValue(stat.TotalValue, stat.ValueKind)}");
+            text.AppendLine(
+                $"**{stat.Name}:** {FormatValue(stat.TotalValue, stat.ValueKind)} " +
+                $"`base {FormatValue(stat.BaseValue, stat.ValueKind)} + extra {FormatValue(stat.ExtraValue, stat.ValueKind)}`");
         }
 
-        return text.Length == 0 ? "Sin estadísticas cargadas." : text.ToString();
+        return text.ToString();
     }
 
     private static string DisplayName(CharacterProfileDto character)

@@ -6,7 +6,7 @@ using ThaddeusMorrowind.Bot.Features.Characters.Dtos;
 
 namespace ThaddeusMorrowind.Bot.Features.Characters;
 
-public sealed class CharacterService : ICharacterService
+public sealed partial class CharacterService : ICharacterService
 {
     private readonly GameDbContext _dbContext;
 
@@ -44,6 +44,21 @@ public sealed class CharacterService : ICharacterService
         if (!user.AccountStatus.Equals("active", StringComparison.OrdinalIgnoreCase))
         {
             return Fail<CharacterProfileDto>("Tu cuenta no está activa.");
+        }
+
+        if (await CharacterNameExistsAsync(connection, user.UserAccountId, name, null, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes un personaje activo llamado **{name}**. Usa otro nombre para no confundir la ficha.");
+        }
+
+        string? normalizedNicknameForCreate = NormalizeNullable(request.Nickname);
+
+        if (normalizedNicknameForCreate is not null &&
+            await CharacterNicknameExistsAsync(connection, user.UserAccountId, normalizedNicknameForCreate, null, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes un personaje activo con el apodo **{normalizedNicknameForCreate}**. Usa otro apodo o déjalo vacío.");
         }
 
         uint activeCount = await CountCharactersAsync(connection, user.UserAccountId, "active", cancellationToken);
@@ -306,6 +321,20 @@ public sealed class CharacterService : ICharacterService
         if (newName is null && newNickname is null && newImageUrl is null)
         {
             return Fail<CharacterProfileDto>("No enviaste ningún dato para actualizar.");
+        }
+
+        if (newName is not null &&
+            await CharacterNameExistsAsync(connection, profile.UserAccountId, newName, profile.CharacterId, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes otro personaje activo llamado **{newName}**. Usa un nombre distinto.");
+        }
+
+        if (newNickname is not null &&
+            await CharacterNicknameExistsAsync(connection, profile.UserAccountId, newNickname, profile.CharacterId, cancellationToken))
+        {
+            return Fail<CharacterProfileDto>(
+                $"Ya tienes otro personaje activo con el apodo **{newNickname}**. Usa un apodo distinto o déjalo vacío.");
         }
 
         await using DbCommand command = connection.CreateCommand();

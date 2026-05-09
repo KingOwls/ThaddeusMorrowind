@@ -22,24 +22,36 @@ public static class CharacterCreationWizardViews
 
         EmbedBuilder builder = new EmbedBuilder()
             .WithTitle($"🧙 Creación de personaje · {currentPanelTitle}")
-            .WithDescription(BuildDescription(session, nation, role, profession))
-            .WithColor(Color.Purple)
+            .WithDescription(BuildDescription(session))
+            .WithColor(CurrentPanelColor(session.CurrentStep))
             .AddField(currentPanelTitle, BuildCurrentOption(currentOption, currentIndex, currentTotal), inline: false)
             .AddField("Selecciones actuales", BuildCurrentSelections(nation, role, profession), inline: false)
             .WithFooter($"Sesión {session.SessionId} · Panel {session.CurrentStep + 1}/3 · Expira en 10 minutos")
             .WithCurrentTimestamp();
 
-        string? thumbnailUrl = FirstNotEmpty(currentOption.IconUrl, session.ImageUrl);
-        string? bannerUrl = currentOption.BannerUrl;
+        // En el wizard queremos que el icono mostrado sea el del catálogo actual.
+        // La imagen del personaje se muestra solo como dato del personaje, no reemplaza el icono del panel.
+        string? thumbnailUrl = NormalizeImageUrl(currentOption.IconUrl);
+        string? bannerUrl = NormalizeImageUrl(currentOption.BannerUrl);
 
         if (!string.IsNullOrWhiteSpace(thumbnailUrl))
         {
             builder.WithThumbnailUrl(thumbnailUrl);
+            builder.WithAuthor(currentOption.Name, thumbnailUrl);
+        }
+        else
+        {
+            builder.WithAuthor(currentOption.Name);
         }
 
         if (!string.IsNullOrWhiteSpace(bannerUrl))
         {
             builder.WithImageUrl(bannerUrl);
+        }
+        else if (!string.IsNullOrWhiteSpace(thumbnailUrl))
+        {
+            // Si no hay banner, al menos se muestra el icono también como imagen grande.
+            builder.WithImageUrl(thumbnailUrl);
         }
 
         return builder.Build();
@@ -78,25 +90,21 @@ public static class CharacterCreationWizardViews
             .Build();
     }
 
-    private static string BuildDescription(
-        CharacterCreationSessionDto session,
-        CharacterCatalogOptionDto nation,
-        CharacterCatalogOptionDto role,
-        CharacterCatalogOptionDto profession)
+    private static string BuildDescription(CharacterCreationSessionDto session)
     {
         StringBuilder builder = new();
 
         builder.AppendLine($"**Nombre:** {session.Name}");
         builder.AppendLine($"**Apodo:** {(string.IsNullOrWhiteSpace(session.Nickname) ? "Sin apodo" : session.Nickname)}");
-        builder.AppendLine($"**Imagen personalizada:** {(string.IsNullOrWhiteSpace(session.ImageUrl) ? "No" : "Sí")}");
+        builder.AppendLine($"**Imagen del personaje:** {(string.IsNullOrWhiteSpace(session.ImageUrl) ? "No configurada" : "Configurada")}");
         builder.AppendLine();
-        builder.AppendLine("Usa ◀ y ▶ para navegar. Cuando te guste la opción, pulsa aceptar para pasar al siguiente panel.");
+        builder.AppendLine("Usa **◀** y **▶** para navegar. Cuando te guste la opción, pulsa aceptar.");
         builder.AppendLine();
         builder.AppendLine(session.CurrentStep switch
         {
-            0 => "Ahora estás escogiendo la **Nación**.",
-            1 => "Ahora estás escogiendo el **Rol**.",
-            2 => "Ahora estás escogiendo la **Profesión**.",
+            0 => "Ahora estás escogiendo la **Nación**. Define identidad, afinidad narrativa y parte del crecimiento.",
+            1 => "Ahora estás escogiendo el **Rol**. Define función de combate y estilo principal.",
+            2 => "Ahora estás escogiendo la **Profesión**. Define utilidad, exploración y recursos.",
             _ => "Ahora estás escogiendo una opción."
         });
 
@@ -152,6 +160,17 @@ public static class CharacterCreationWizardViews
         };
     }
 
+    private static Color CurrentPanelColor(int currentStep)
+    {
+        return currentStep switch
+        {
+            0 => Color.Purple,
+            1 => Color.DarkRed,
+            2 => Color.DarkGreen,
+            _ => Color.Blue
+        };
+    }
+
     private static int CurrentIndex(CharacterCreationSessionDto session)
     {
         return session.CurrentStep switch
@@ -178,8 +197,15 @@ public static class CharacterCreationWizardViews
         };
     }
 
-    private static string? FirstNotEmpty(params string?[] values)
+    private static string? NormalizeImageUrl(string? url)
     {
-        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return null;
+        }
+
+        // Discord suele tener problemas mostrando SVG en thumbnails/embeds.
+        // Si viene de DiceBear, usar PNG ayuda a que el icono sea visible.
+        return url.Replace("/svg?", "/png?", StringComparison.OrdinalIgnoreCase);
     }
 }

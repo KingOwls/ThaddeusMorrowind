@@ -13,13 +13,16 @@ public sealed class CharacterPrefixCommands : ModuleBase<SocketCommandContext>
 {
     private readonly ICharacterService _characterService;
     private readonly ICharacterCatalogService _catalogService;
+    private readonly ICharacterCreationSessionStore _sessionStore;
 
     public CharacterPrefixCommands(
         ICharacterService characterService,
-        ICharacterCatalogService catalogService)
+        ICharacterCatalogService catalogService,
+        ICharacterCreationSessionStore sessionStore)
     {
         _characterService = characterService;
         _catalogService = catalogService;
+        _sessionStore = sessionStore;
     }
 
 
@@ -30,12 +33,16 @@ public sealed class CharacterPrefixCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(
             embed: options.Count == 0
-                ? CharacterCatalogViews.Missing("nation")
-                : CharacterCatalogViews.List(
-                    "🏳️ Naciones disponibles",
-                    "Las naciones definen identidad, estilo narrativo y parte del crecimiento del personaje.",
-                    options),
-            components: options.Count == 0 ? null : CharacterCatalogComponents.CatalogMenu("nation", options));
+                ? CharacterCatalogBrowserViews.Empty("nation")
+                : CharacterCatalogBrowserViews.Detail(
+                    "🏳️ Naciones",
+                    "Las naciones definen identidad, afinidad narrativa y crecimiento base.",
+                    options[0],
+                    0,
+                    options.Count),
+            components: options.Count == 0
+                ? null
+                : CharacterCatalogBrowserComponents.BrowserButtons("nation", 0, options.Count));
     }
 
     [Command("roles")]
@@ -45,12 +52,16 @@ public sealed class CharacterPrefixCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(
             embed: options.Count == 0
-                ? CharacterCatalogViews.Missing("role")
-                : CharacterCatalogViews.List(
-                    "⚔️ Roles disponibles",
-                    "Los roles definen el trabajo principal del personaje en combate y equipo.",
-                    options),
-            components: options.Count == 0 ? null : CharacterCatalogComponents.CatalogMenu("role", options));
+                ? CharacterCatalogBrowserViews.Empty("role")
+                : CharacterCatalogBrowserViews.Detail(
+                    "⚔️ Roles",
+                    "Los roles definen función de combate y estilo principal.",
+                    options[0],
+                    0,
+                    options.Count),
+            components: options.Count == 0
+                ? null
+                : CharacterCatalogBrowserComponents.BrowserButtons("role", 0, options.Count));
     }
 
     [Command("profesiones")]
@@ -60,26 +71,49 @@ public sealed class CharacterPrefixCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(
             embed: options.Count == 0
-                ? CharacterCatalogViews.Missing("profession")
-                : CharacterCatalogViews.List(
-                    "🧰 Profesiones disponibles",
-                    "Las profesiones definen utilidad, exploración, recursos y eventos especiales.",
-                    options),
-            components: options.Count == 0 ? null : CharacterCatalogComponents.CatalogMenu("profession", options));
+                ? CharacterCatalogBrowserViews.Empty("profession")
+                : CharacterCatalogBrowserViews.Detail(
+                    "🧰 Profesiones",
+                    "Las profesiones definen utilidad, exploración y recursos.",
+                    options[0],
+                    0,
+                    options.Count),
+            components: options.Count == 0
+                ? null
+                : CharacterCatalogBrowserComponents.BrowserButtons("profession", 0, options.Count));
     }
 
     [Command("crear")]
-    public async Task CreateAsync(string nombre, string nacion, string rol, string profesion, string? apodo = null)
+    public async Task CreateAsync(string nombre, string? apodo = null)
     {
-        CharacterCommandResult<CharacterProfileDto> result = await _characterService.CreateAsync(
+        IReadOnlyList<CharacterCatalogOptionDto> nations = await _catalogService.GetNationsAsync();
+        IReadOnlyList<CharacterCatalogOptionDto> roles = await _catalogService.GetRolesAsync();
+        IReadOnlyList<CharacterCatalogOptionDto> professions = await _catalogService.GetProfessionsAsync();
+
+        if (nations.Count == 0 || roles.Count == 0 || professions.Count == 0)
+        {
+            await ReplyAsync(embed: CharacterCreationWizardViews.CatalogMissing());
+            return;
+        }
+
+        string? imageUrl = Context.Message.Attachments.FirstOrDefault()?.Url;
+
+        CharacterCreationSessionDto session = _sessionStore.Create(
             Context.User.Id,
-            new CharacterCreateRequestDto(nombre, apodo, null, nacion, rol, profesion));
+            nombre,
+            apodo,
+            imageUrl);
 
         await ReplyAsync(
-            embed: result.Success && result.Data is not null
-                ? CharacterProfileViews.Created(result.Data)
-                : CharacterProfileViews.Result("⚠️ No se pudo crear", result.Message, false),
-            components: result.Success && result.Data is not null ? CharacterProfileComponents.ForOwner(result.Data) : null);
+            embed: CharacterCreationWizardViews.Wizard(
+                session,
+                nations[0],
+                roles[0],
+                professions[0],
+                nations.Count,
+                roles.Count,
+                professions.Count),
+            components: CharacterCreationWizardComponents.WizardButtons(session));
     }
 
     [Command("lista")]

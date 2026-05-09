@@ -1,4 +1,6 @@
+using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 using ThaddeusMorrowind.Bot.Discord.Components;
 using ThaddeusMorrowind.Bot.Discord.Views;
 using ThaddeusMorrowind.Bot.Features.Characters;
@@ -25,13 +27,28 @@ public sealed class CharacterCreationWizardHandlers : InteractionModuleBase<Sock
     [ComponentInteraction("character:create:*:*")]
     public async Task HandleCreationButtonAsync(string action, string sessionId)
     {
-        await DeferAsync(ephemeral: true);
+        if (Context.Interaction is not SocketMessageComponent component)
+        {
+            await RespondAsync(
+                embed: CharacterProfileViews.Result(
+                    "⚠️ Interacción inválida",
+                    "No pude identificar el panel de creación.",
+                    false),
+                ephemeral: true);
+
+            return;
+        }
 
         CharacterCreationSessionDto? session = _sessionStore.Get(sessionId, Context.User.Id);
 
         if (session is null)
         {
-            await FollowupAsync(embed: CharacterCreationWizardViews.Expired(), ephemeral: true);
+            await component.UpdateAsync(message =>
+            {
+                message.Embed = CharacterCreationWizardViews.Expired();
+                message.Components = new ComponentBuilder().Build();
+            });
+
             return;
         }
 
@@ -41,14 +58,25 @@ public sealed class CharacterCreationWizardHandlers : InteractionModuleBase<Sock
 
         if (nations.Count == 0 || roles.Count == 0 || professions.Count == 0)
         {
-            await FollowupAsync(embed: CharacterCreationWizardViews.CatalogMissing(), ephemeral: true);
+            await component.UpdateAsync(message =>
+            {
+                message.Embed = CharacterCreationWizardViews.CatalogMissing();
+                message.Components = new ComponentBuilder().Build();
+            });
+
             return;
         }
 
         if (action == "cancel")
         {
             _sessionStore.Remove(sessionId, Context.User.Id);
-            await FollowupAsync(embed: CharacterCreationWizardViews.Cancelled(), ephemeral: true);
+
+            await component.UpdateAsync(message =>
+            {
+                message.Embed = CharacterCreationWizardViews.Cancelled();
+                message.Components = new ComponentBuilder().Build();
+            });
+
             return;
         }
 
@@ -59,7 +87,7 @@ public sealed class CharacterCreationWizardHandlers : InteractionModuleBase<Sock
             updated = MoveSelection(session, action, nations.Count, roles.Count, professions.Count);
             _sessionStore.Save(updated);
 
-            await SendPanelAsync(updated, nations, roles, professions);
+            await UpdateWizardPanelAsync(component, updated, nations, roles, professions);
             return;
         }
 
@@ -74,11 +102,16 @@ public sealed class CharacterCreationWizardHandlers : InteractionModuleBase<Sock
 
                 if (nextStep is null)
                 {
-                    await FollowupAsync(embed: CharacterCreationWizardViews.Expired(), ephemeral: true);
+                    await component.UpdateAsync(message =>
+                    {
+                        message.Embed = CharacterCreationWizardViews.Expired();
+                        message.Components = new ComponentBuilder().Build();
+                    });
+
                     return;
                 }
 
-                await SendPanelAsync(nextStep, nations, roles, professions);
+                await UpdateWizardPanelAsync(component, nextStep, nations, roles, professions);
                 return;
             }
 
@@ -98,36 +131,43 @@ public sealed class CharacterCreationWizardHandlers : InteractionModuleBase<Sock
 
             _sessionStore.Remove(sessionId, Context.User.Id);
 
-            await FollowupAsync(
-                embed: result.Success && result.Data is not null
+            await component.UpdateAsync(message =>
+            {
+                message.Embed = result.Success && result.Data is not null
                     ? CharacterProfileViews.Created(result.Data)
-                    : CharacterProfileViews.Result("⚠️ No se pudo crear", result.Message, false),
-                components: result.Success && result.Data is not null ? CharacterProfileComponents.ForOwner(result.Data) : null,
-                ephemeral: true);
+                    : CharacterProfileViews.Result("⚠️ No se pudo crear", result.Message, false);
+
+                message.Components = result.Success && result.Data is not null
+                    ? CharacterProfileComponents.ForOwner(result.Data)
+                    : new ComponentBuilder().Build();
+            });
 
             return;
         }
 
-        await SendPanelAsync(updated, nations, roles, professions);
+        await UpdateWizardPanelAsync(component, updated, nations, roles, professions);
     }
 
-    private async Task SendPanelAsync(
+    private static async Task UpdateWizardPanelAsync(
+        SocketMessageComponent component,
         CharacterCreationSessionDto session,
         IReadOnlyList<CharacterCatalogOptionDto> nations,
         IReadOnlyList<CharacterCatalogOptionDto> roles,
         IReadOnlyList<CharacterCatalogOptionDto> professions)
     {
-        await FollowupAsync(
-            embed: CharacterCreationWizardViews.Wizard(
+        await component.UpdateAsync(message =>
+        {
+            message.Embed = CharacterCreationWizardViews.Wizard(
                 session,
                 ClampPick(nations, session.NationIndex),
                 ClampPick(roles, session.RoleIndex),
                 ClampPick(professions, session.ProfessionIndex),
                 nations.Count,
                 roles.Count,
-                professions.Count),
-            components: CharacterCreationWizardComponents.WizardButtons(session),
-            ephemeral: true);
+                professions.Count);
+
+            message.Components = CharacterCreationWizardComponents.WizardButtons(session);
+        });
     }
 
     private static CharacterCreationSessionDto MoveSelection(

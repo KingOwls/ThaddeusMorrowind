@@ -25,77 +25,44 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
         _sessionStore = sessionStore;
     }
 
-
-    [SlashCommand("naciones", "Muestra las naciones disponibles para crear personajes.")]
-    public async Task NationsAsync(bool publico = false)
+    [SlashCommand("naciones", "Muestra el catálogo visual navegable de naciones.")]
+    public Task NationsAsync(bool publico = false)
     {
-        await DeferAsync(ephemeral: !publico);
-
-        IReadOnlyList<CharacterCatalogOptionDto> options = await _catalogService.GetNationsAsync();
-
-        if (options.Count == 0)
-        {
-            await FollowupAsync(embed: CharacterCatalogViews.Missing("nation"), ephemeral: !publico);
-            return;
-        }
-
-        await FollowupAsync(
-            embed: CharacterCatalogViews.List(
-                "🏳️ Naciones disponibles",
-                "Las naciones definen identidad, estilo narrativo y parte del crecimiento del personaje.",
-                options),
-            components: CharacterCatalogComponents.CatalogMenu("nation", options),
-            ephemeral: !publico);
+        return ShowCatalogAsync(
+            "nation",
+            "🏳️ Naciones",
+            "Las naciones definen identidad, afinidad narrativa y crecimiento base.",
+            () => _catalogService.GetNationsAsync(),
+            publico);
     }
 
-    [SlashCommand("roles", "Muestra los roles disponibles para crear personajes.")]
-    public async Task RolesAsync(bool publico = false)
+    [SlashCommand("roles", "Muestra el catálogo visual navegable de roles.")]
+    public Task RolesAsync(bool publico = false)
     {
-        await DeferAsync(ephemeral: !publico);
-
-        IReadOnlyList<CharacterCatalogOptionDto> options = await _catalogService.GetRolesAsync();
-
-        if (options.Count == 0)
-        {
-            await FollowupAsync(embed: CharacterCatalogViews.Missing("role"), ephemeral: !publico);
-            return;
-        }
-
-        await FollowupAsync(
-            embed: CharacterCatalogViews.List(
-                "⚔️ Roles disponibles",
-                "Los roles definen el trabajo principal del personaje en combate y equipo.",
-                options),
-            components: CharacterCatalogComponents.CatalogMenu("role", options),
-            ephemeral: !publico);
+        return ShowCatalogAsync(
+            "role",
+            "⚔️ Roles",
+            "Los roles definen función de combate y estilo principal.",
+            () => _catalogService.GetRolesAsync(),
+            publico);
     }
 
-    [SlashCommand("profesiones", "Muestra las profesiones disponibles para crear personajes.")]
-    public async Task ProfessionsAsync(bool publico = false)
+    [SlashCommand("profesiones", "Muestra el catálogo visual navegable de profesiones.")]
+    public Task ProfessionsAsync(bool publico = false)
     {
-        await DeferAsync(ephemeral: !publico);
-
-        IReadOnlyList<CharacterCatalogOptionDto> options = await _catalogService.GetProfessionsAsync();
-
-        if (options.Count == 0)
-        {
-            await FollowupAsync(embed: CharacterCatalogViews.Missing("profession"), ephemeral: !publico);
-            return;
-        }
-
-        await FollowupAsync(
-            embed: CharacterCatalogViews.List(
-                "🧰 Profesiones disponibles",
-                "Las profesiones definen utilidad, exploración, recursos y eventos especiales.",
-                options),
-            components: CharacterCatalogComponents.CatalogMenu("profession", options),
-            ephemeral: !publico);
+        return ShowCatalogAsync(
+            "profession",
+            "🧰 Profesiones",
+            "Las profesiones definen utilidad, exploración y recursos.",
+            () => _catalogService.GetProfessionsAsync(),
+            publico);
     }
 
     [SlashCommand("crear", "Inicia la creación visual de un personaje.")]
     public async Task CreateAsync(
         string nombre,
         string? apodo = null,
+        IAttachment? imagen = null,
         string? imagen_url = null)
     {
         await DeferAsync(ephemeral: true);
@@ -122,11 +89,18 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
             return;
         }
 
+        string? finalImageUrl = imagen?.Url;
+
+        if (string.IsNullOrWhiteSpace(finalImageUrl))
+        {
+            finalImageUrl = imagen_url;
+        }
+
         CharacterCreationSessionDto session = _sessionStore.Create(
             Context.User.Id,
             nombre,
             apodo,
-            imagen_url);
+            finalImageUrl);
 
         await FollowupAsync(
             embed: CharacterCreationWizardViews.Wizard(
@@ -164,11 +138,9 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
     {
         await DeferAsync(ephemeral: false);
 
-        CharacterLookupDto lookup = BuildLookup(personaje_id, nombre, usuario);
-
         CharacterCommandResult<CharacterProfileDto> result = await _characterService.GetAsync(
             Context.User.Id,
-            lookup);
+            BuildLookup(personaje_id, nombre, usuario));
 
         if (!result.Success || result.Data is null)
         {
@@ -211,9 +183,17 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
         string? nombre_actual = null,
         string? nuevo_nombre = null,
         string? nuevo_apodo = null,
+        IAttachment? nueva_imagen = null,
         string? nueva_imagen_url = null)
     {
         await DeferAsync(ephemeral: true);
+
+        string? finalImageUrl = nueva_imagen?.Url;
+
+        if (string.IsNullOrWhiteSpace(finalImageUrl))
+        {
+            finalImageUrl = nueva_imagen_url;
+        }
 
         CharacterCommandResult<CharacterProfileDto> result = await _characterService.EditAsync(
             Context.User.Id,
@@ -222,7 +202,7 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
                 nombre_actual,
                 nuevo_nombre,
                 nuevo_apodo,
-                nueva_imagen_url));
+                finalImageUrl));
 
         if (!result.Success || result.Data is null)
         {
@@ -322,6 +302,34 @@ public sealed class CharacterSlashCommands : InteractionModuleBase<SocketInterac
                 ? CharacterProfileViews.SkillTree(result.Data)
                 : CharacterProfileViews.Result("📭 Árbol no encontrado", result.Message, false),
             ephemeral: false);
+    }
+
+    private async Task ShowCatalogAsync(
+        string catalogType,
+        string title,
+        string intro,
+        Func<Task<IReadOnlyList<CharacterCatalogOptionDto>>> loadOptions,
+        bool publico)
+    {
+        await DeferAsync(ephemeral: !publico);
+
+        IReadOnlyList<CharacterCatalogOptionDto> options = await loadOptions();
+
+        if (options.Count == 0)
+        {
+            await FollowupAsync(embed: CharacterCatalogBrowserViews.Empty(catalogType), ephemeral: !publico);
+            return;
+        }
+
+        await FollowupAsync(
+            embed: CharacterCatalogBrowserViews.Detail(
+                title,
+                intro,
+                options[0],
+                0,
+                options.Count),
+            components: CharacterCatalogBrowserComponents.BrowserButtons(catalogType, 0, options.Count),
+            ephemeral: !publico);
     }
 
     private static CharacterLookupDto BuildLookup(long personajeId, string? nombre, IUser? usuario)
