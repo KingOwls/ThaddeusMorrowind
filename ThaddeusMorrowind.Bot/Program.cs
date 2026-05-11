@@ -8,6 +8,7 @@ using ThaddeusMorrowind.Bot.Features.Users;
 using ThaddeusMorrowind.Bot.Features.Characters;
 using ThaddeusMorrowind.Bot.Features.Stats;
 using ThaddeusMorrowind.Bot.Features.Skills;
+using ThaddeusMorrowind.Bot.Features.Inventory;
 
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
@@ -58,6 +59,8 @@ builder.Services.AddScoped<IActiveCharacterService>(sp => sp.GetRequiredService<
 builder.Services.AddScoped<ICharacterService, CharacterService>();
 builder.Services.AddScoped<ICharacterCatalogService, CharacterCatalogService>();
 builder.Services.AddSingleton<ICharacterCreationSessionStore, InMemoryCharacterCreationSessionStore>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IPhase2AdvancedService, Phase2AdvancedService>();
 builder.Services.AddHostedService<Worker>();
 
 IHost host = builder.Build();

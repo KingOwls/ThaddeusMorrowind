@@ -1,0 +1,73 @@
+using Discord.Interactions;
+using Discord.WebSocket;
+using ThaddeusMorrowind.Bot.Discord.Views;
+using ThaddeusMorrowind.Bot.Features.Inventory;
+using ThaddeusMorrowind.Bot.Features.Inventory.Dtos;
+
+namespace ThaddeusMorrowind.Bot.Discord.SlashCommands;
+
+[Group("experiencia", "Comandos admin/debug de experiencia.")]
+public sealed class Phase2ExperienceSlashCommands : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly IPhase2AdvancedService _service;
+    public Phase2ExperienceSlashCommands(IPhase2AdvancedService service)=>_service=service;
+    [SlashCommand("agregar","Admin/debug: agrega experiencia a un personaje.")]
+    public Task AddAsync(long cantidad,long personaje_id=0,string? nombre=null)=>Change(cantidad,personaje_id,nombre,true);
+    [SlashCommand("quitar","Admin/debug: quita experiencia a un personaje.")]
+    public Task RemoveAsync(long cantidad,long personaje_id=0,string? nombre=null)=>Change(cantidad,personaje_id,nombre,false);
+    private async Task Change(long cantidad,long personajeId,string? nombre,bool add){await DeferAsync(ephemeral:true); bool admin=Context.User is SocketGuildUser g && g.GuildPermissions.Administrator; if(!admin){await FollowupAsync(embed:Phase2AdvancedViews.Result("⛔ Permiso denegado","Solo administradores.",false),ephemeral:true);return;} var result=add?await _service.AddCharacterXpAsync(Context.User.Id,personajeId>0?(ulong)personajeId:null,nombre,cantidad,true):await _service.RemoveCharacterXpAsync(Context.User.Id,personajeId>0?(ulong)personajeId:null,nombre,cantidad,true); await FollowupAsync(embed:result.Success&&result.Data is not null?Phase2AdvancedViews.Xp(result.Data,result.Message):Phase2AdvancedViews.Result("⚠️ Error",result.Message,false),ephemeral:true);}
+}
+
+[Group("artefacto", "Catálogo y progreso de artefactos.")]
+public sealed class Phase2ArtifactSlashCommands : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly IPhase2AdvancedService _service;
+    public Phase2ArtifactSlashCommands(IPhase2AdvancedService service)=>_service=service;
+    [SlashCommand("sets","Lista sets de artefactos.")]
+    public async Task SetsAsync(string? filtro=null){await DeferAsync(); await FollowupAsync(embed:Phase2AdvancedViews.Sets(await _service.ListArtifactSetsAsync(filtro)));}
+    [SlashCommand("ver","Ver detalle de un set.")]
+    public async Task ViewAsync(string set_key){await DeferAsync(); var set=await _service.GetArtifactSetAsync(set_key); await FollowupAsync(embed:set is null?Phase2AdvancedViews.Result("📭 Set no encontrado",$"No encontré `{set_key}`.",false):Phase2AdvancedViews.Set(set));}
+    [SlashCommand("xp_agregar","Agrega experiencia a un artefacto.")]
+    public async Task AddXpAsync(long item_id,long cantidad){await DeferAsync(ephemeral:true); var r=await _service.AddArtifactXpAsync(Context.User.Id,(ulong)item_id,cantidad); await FollowupAsync(embed:r.Success&&r.Data is not null?Phase2AdvancedViews.ArtifactXp(r.Data,r.Message):Phase2AdvancedViews.Result("⚠️ Error",r.Message,false),ephemeral:true);}
+    [SlashCommand("xp_quitar","Quita experiencia a un artefacto. Debug.")]
+    public async Task RemoveXpAsync(long item_id,long cantidad){await DeferAsync(ephemeral:true); var r=await _service.RemoveArtifactXpAsync(Context.User.Id,(ulong)item_id,cantidad); await FollowupAsync(embed:r.Success&&r.Data is not null?Phase2AdvancedViews.ArtifactXp(r.Data,r.Message):Phase2AdvancedViews.Result("⚠️ Error",r.Message,false),ephemeral:true);}
+}
+
+[Group("arma", "Catálogo de armas.")]
+public sealed class Phase2WeaponSlashCommands : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly IPhase2AdvancedService _service;
+    public Phase2WeaponSlashCommands(IPhase2AdvancedService service)=>_service=service;
+    [SlashCommand("catalogo","Lista armas disponibles.")]
+    public async Task CatalogAsync(string? filtro=null){await DeferAsync(); await FollowupAsync(embed:Phase2AdvancedViews.Weapons(await _service.ListWeaponsAsync(filtro)));}
+    [SlashCommand("ver","Detalle de arma por key.")]
+    public async Task ViewAsync(string item_key){await DeferAsync(); var w=await _service.GetWeaponAsync(item_key); await FollowupAsync(embed:w is null?Phase2AdvancedViews.Result("📭 Arma no encontrada",$"No encontré `{item_key}`.",false):Phase2AdvancedViews.Weapon(w));}
+}
+
+[Group("catalogo", "Búsqueda de items.")]
+public sealed class Phase2CatalogSlashCommands : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly IPhase2AdvancedService _service;
+    public Phase2CatalogSlashCommands(IPhase2AdvancedService service)=>_service=service;
+    [SlashCommand("items","Busca items por término o categoría.")]
+    public async Task ItemsAsync(string? termino=null,string? categoria=null){await DeferAsync(); await FollowupAsync(embed:Phase2AdvancedViews.Items(await _service.SearchItemsAsync(termino,categoria)));}
+}
+
+
+[Group("inventario", "Búsqueda avanzada de inventario y catálogo.")]
+public sealed class Phase2InventorySearchSlashCommands : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly IPhase2AdvancedService _service;
+    public Phase2InventorySearchSlashCommands(IPhase2AdvancedService service)=>_service=service;
+    [SlashCommand("buscar","Busca items por término o categoría.")]
+    public async Task SearchAsync(string? termino=null,string? categoria=null){await DeferAsync(); await FollowupAsync(embed:Phase2AdvancedViews.Items(await _service.SearchItemsAsync(termino,categoria)));}
+}
+
+[Group("build", "Estadísticas finales por equipo.")]
+public sealed class Phase2BuildSlashCommands : InteractionModuleBase<SocketInteractionContext>
+{
+    private readonly IPhase2AdvancedService _service;
+    public Phase2BuildSlashCommands(IPhase2AdvancedService service)=>_service=service;
+    [SlashCommand("stats","Muestra stats finales considerando equipo, artefactos y sets.")]
+    public async Task StatsAsync(long personaje_id=0,string? nombre=null){await DeferAsync(); FinalStatsDto? dto=await _service.GetFinalStatsAsync(Context.User.Id,personaje_id>0?(ulong)personaje_id:null,nombre); await FollowupAsync(embed:dto is null?Phase2AdvancedViews.Result("📭 Personaje no encontrado","No encontré ese personaje en tu cuenta.",false):Phase2AdvancedViews.FinalStats(dto));}
+}

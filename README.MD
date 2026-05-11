@@ -596,6 +596,251 @@ Luego pruebas.
 
 ---
 
+# Thaddeus Morrowind · Estado final del prototipo
+
+> Cierre documentado del intento de implementar un bot RPG/MMORPG en Discord con C#, Discord.Net y MySQL.
+
+## 1. Motivo del cierre
+
+El proyecto se detiene porque la complejidad técnica empezó a superar el alcance saludable de un bot de Discord. La idea creció desde comandos de usuario y personaje hasta un sistema casi completo de MMO: experiencia, habilidades, inventario, armas, artefactos, herramientas únicas, sets, estadísticas finales, dungeons y batalla.
+
+El cierre no significa que la idea no sirva. Significa que la arquitectura elegida para este intento ya no era cómoda ni estable para seguir creciendo.
+
+## 2. Objetivo original
+
+Crear un bot de Discord llamado **Thaddeus Morrowind** que funcionara como base de un sistema RPG/MMORPG con:
+
+- Usuarios registrados.
+- Perfiles públicos.
+- Personajes con nación, rol y profesión.
+- Estadísticas y progresión de nivel.
+- Árbol de habilidades editable.
+- Inventario y equipamiento.
+- Armas, artefactos y herramientas únicas.
+- Preparación futura para batalla, dungeons, misiones y eventos.
+
+## 3. Fases trabajadas
+
+| Fase | Nombre | Resultado |
+|---|---|---|
+| Fase 0 | Conceptualización | Naciones, roles, profesiones, estadísticas, mundo y reglas base. |
+| Fase 1 | Usuarios y perfil | Registro, perfil público y datos de usuario. Llegó a funcionar en una etapa previa. |
+| Fase 1.5 | Personajes | Creación, lista, selección, edición, archivo, restauración y stats. Quedó con deuda técnica. |
+| Fase XP | Experiencia | Se planteó progresión de nivel 1 a 100 y comandos admin/debug para agregar o quitar XP. |
+| Fase habilidades | Árbol de habilidades | Se planteó árbol de 20 espacios: 8 activas, 6 pasivas, 4 exploración/rol y 2 estadísticas. |
+| Fase stats | Crecimiento por nivel | Se trabajó crecimiento por nación, rol y profesión. |
+| Fase 2 | Inventario y equipamiento | Items, armas, artefactos, sets, herramientas únicas y stats finales. No quedó estable. |
+| Fase 2 Clean | Reconstrucción limpia | Se intentó aislar con tablas `p2_`, pero los comandos no quedaron confirmados en Discord. |
+
+## 4. Diseño importante definido
+
+### Estadísticas principales
+
+- Vida
+- Ataque
+- Poder mágico
+- Armadura
+- Resistencia mágica
+- Velocidad
+- Probabilidad
+- Daño crítico
+- Mana
+- Regeneración de mana
+
+### Estadísticas secundarias
+
+- Evasión
+- Suerte
+- Inmortalidad
+- Bloqueo
+- Aumento de daño infligido
+- Reducción de daño recibido
+- Bono protectivo
+- Agradecimiento
+- Omnivampirismo
+
+### Fórmula de stats finales
+
+```txt
+final = base + plano + ((base + plano) * porcentaje / 100)
+```
+
+Ejemplo:
+
+```txt
+Ataque base: 100
+Ataque plano: 40
+Ataque porcentual: 20%
+
+Resultado:
+100 + 40 + ((100 + 40) * 0.20) = 168
+```
+
+## 5. Artefactos
+
+Se definió que los personajes tienen:
+
+- Flor
+- Pluma
+- Reloj
+- Cáliz
+- Sombrero
+- Herramienta única
+
+Las primeras cinco piezas cuentan para set. La herramienta única no cuenta para set, pero tiene habilidad propia y cooldown.
+
+Reglas:
+
+- Cada artefacto tiene una estadística principal.
+- Cada artefacto puede tener máximo 4 substats.
+- Cada 4 niveles ocurre un evento.
+- Si tiene menos de 4 substats, agrega una nueva.
+- Si ya tiene 4 substats, mejora una existente.
+- Si llega a +4 con 3 substats, agrega la cuarta y esa entra mejorada una vez.
+
+## 6. Armas
+
+Reglas definidas:
+
+- Las armas tienen atributo principal plano: Vida, Ataque o Poder mágico.
+- Las armas tienen atributo secundario porcentual.
+- Las armas 1★ y 2★ no deberían tener pasivas complejas.
+- Las armas 3★ o superior pueden tener una pasiva.
+- Las armas 4★ a 6★ pueden tener una segunda habilidad llamada **Efecto de Impacto**.
+- El Efecto de Impacto puede generar golpes adicionales con porcentaje reducido de daño.
+
+## 7. Herramientas únicas / ArtUnic
+
+Se definieron como objetos especiales con:
+
+- Descripción propia.
+- Habilidad registrada.
+- Cooldown.
+- Uso en batalla, soporte, protección, movilidad, canalización o utilidad.
+
+Ejemplos conceptuales:
+
+- Relicario de Redención: curación en área y reducción de daño.
+- Promesa del Caballero: vínculo protector y redirección de daño.
+
+## 8. Comandos intentados
+
+```txt
+/perfil
+/personaje crear
+/personaje lista
+/personaje ver
+/personaje seleccionar
+/personaje editar
+/personaje archivar
+/personaje restaurar
+/personaje stats
+/personaje equipo
+/personaje arbol
+
+/habilidad lista
+/habilidad ver
+/habilidad obtener
+/habilidad quitar
+
+/inventario ver
+/inventario personaje
+/inventario buscar
+/inventario otorgar
+
+/equipo ver
+/equipo equipar
+/equipo quitar
+
+/artefacto sets
+/artefacto ver
+/artefacto xp_agregar
+/artefacto xp_quitar
+
+/arma catalogo
+/arma ver
+
+/herramienta catalogo
+/herramienta ver
+
+/experiencia agregar
+/experiencia quitar
+
+/build stats
+```
+
+## 9. Estado técnico al cierre
+
+El proyecto queda en estado **prototipo no estable**.
+
+### Funcionó o avanzó parcialmente
+
+- Conceptualización del mundo y sistemas.
+- Registro y perfil de usuario en una etapa previa.
+- Base de personajes con nación, rol y profesión.
+- Diseño de experiencia y progresión.
+- Diseño de árbol de habilidades.
+- Diseño de inventario, armas, artefactos y herramientas únicas.
+- Scripts SQL de referencia.
+
+### No quedó estable
+
+- Fase 2 completa.
+- Registro final de comandos Slash nuevos.
+- Aparición de comandos nuevos en Discord.
+- Conexión limpia entre stats, habilidades, artefactos y build final.
+- Migraciones consistentes entre versiones.
+
+## 10. Errores importantes encontrados
+
+| Error | Problema | Lectura |
+|---|---|---|
+| `CS1739` | `ReplyAsync` no tenía parámetro `text`. | Firma incorrecta de Discord.Net. |
+| `CS1061` | DTO sin propiedades esperadas. | Vista y DTO estaban desalineados. |
+| `Unknown column` | Columna SQL no existía. | Código esperaba migración no aplicada. |
+| `Table does not exist` | Tabla de inventario no existía. | Se ejecutó C# antes de aplicar SQL. |
+| `Command Timeout` | Timeout al obtener habilidad. | Query/transacción pesada o bloqueada. |
+| `MySqlConnection is already in use` | Conexión reutilizada con reader abierto. | Problema de flujo async/reader. |
+| `APPLICATION_COMMANDS_DUPLICATE_NAME` | Discord rechazó comandos duplicados. | Dos módulos registraban el mismo comando raíz. |
+| Comandos no aparecen | El código existía, pero Discord no mostraba los comandos. | Posible rechazo completo por duplicados o módulos deshabilitados. |
+
+## 11. Diagnóstico final
+
+El problema de fondo fue arquitectónico:
+
+- Se intentó construir demasiada lógica de juego dentro del bot.
+- Se aplicaron muchos scripts incrementales sobre una base en movimiento.
+- El esquema SQL y el código C# no siempre estaban sincronizados.
+- Hubo comandos duplicados y Discord rechazó el registro.
+- La Fase 2 mezcló inventario, armas, artefactos, XP, stats y sets en un bloque demasiado grande.
+
+## 12. Recomendación si se retoma
+
+No continuar directamente sobre esta rama como producción.
+
+Ruta sugerida:
+
+1. Mantener este repositorio como prototipo documentado.
+2. Crear una rama o repositorio nuevo.
+3. Separar el motor del juego en un backend real.
+4. Usar Discord solo como interfaz social o panel de comandos.
+5. Crear migraciones versionadas desde el primer día.
+6. Implementar primero un MVP mínimo:
+   - Usuario
+   - Personaje
+   - XP
+   - Inventario simple
+   - Equipar arma
+   - Calcular stats finales
+7. Agregar artefactos, sets y herramientas únicas después.
+8. Probar cada módulo antes de crear el siguiente.
+
+## 13. Mensaje de cierre
+
+Thaddeus Morrowind queda como una exploración técnica y de diseño. No fue inútil: permitió descubrir el tamaño real del sistema, validar ideas de gameplay y detectar los límites de usar Discord como núcleo de un MMO.
+
+El proyecto puede descansar aquí sin vergüenza. Queda como mapa de una mazmorra difícil, no como una puerta cerrada.
+
 ## Autoría y propósito
 
 Este proyecto nace como una exploración académica y técnica para construir un MMORPG ligero dentro de Discord, usando C#, MySQL y una arquitectura modular.
